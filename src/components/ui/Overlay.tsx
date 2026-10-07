@@ -40,7 +40,7 @@ export const Overlay = ({
   const footerOpacity = inFeaturesSection ? 0 : 1
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-10 flex flex-col justify-between p-4 sm:p-6 md:p-8 lg:p-10 select-none overflow-hidden font-sans">
+    <div className="pointer-events-none fixed inset-0 z-10 flex flex-col justify-between p-4 sm:p-6 md:p-8 lg:p-10 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] select-none overflow-hidden font-sans">
       {/* ─── TOP BAR ─── */}
       <header className="flex items-center justify-between w-full">
         {/* Brand Minimal Lockup */}

@@ -31,13 +31,13 @@ const CameraScrollRig = ({
   useFrame((state, delta) => {
     const aspect = size.width / Math.max(size.height, 1)
     const isNarrow = aspect < 1.05
-    // Responsive camera distance scaling for narrow portrait devices (375px–430px phones & portrait tablets)
-    // Ensures headset is comfortably framed and never clipped at screen edges
-    const responsiveZScale = isNarrow
-      ? Math.min(Math.max(1.0 / (aspect * 1.32), 1.0), 1.62)
-      : 1.0
-    const heroZ = 4.3 * responsiveZScale
-    const heroY = isNarrow ? 0.20 : 0.15
+    const isMobile = aspect < 0.85 || size.width < 768
+
+    // With meshScale handling the proportional sizing on mobile, camera sits at natural perspective
+    const heroX = 0
+    const heroY = isMobile ? 0.10 : (isNarrow ? 0.16 : 0.15)
+    const heroZ = isMobile ? 4.7 : (isNarrow ? 4.5 : 4.3)
+    const heroLookY = isMobile ? 0.06 : 0
 
     // 1. If a hotspot is actively selected, glide smoothly into macro focus
     if (activeHotspot) {
@@ -49,19 +49,19 @@ const CameraScrollRig = ({
       const hPos = activeHotspot.cameraPos
       const hLook = activeHotspot.cameraLookAt
 
-      // On mobile screens, elevate target lookAt so the focused component remains visible above the bottom detail card
-      const yOffset = isNarrow ? 0.22 : 0
-      const zScale = isNarrow ? Math.max(1.15, responsiveZScale * 0.92) : 1.0
+      // On mobile screens, scale the macro camera target in sync with meshScale and elevate slightly
+      const macroScale = isMobile ? 0.72 : 1.0
+      const yOffset = isMobile ? 0.14 : 0
 
       const targetPos = new THREE.Vector3(
-        isNarrow ? hPos[0] * 0.75 : hPos[0],
-        hPos[1] + yOffset,
-        hPos[2] * zScale
+        hPos[0] * macroScale,
+        (hPos[1] + yOffset) * macroScale,
+        hPos[2] * (isMobile ? 0.95 : 1.0)
       )
       const targetLookAt = new THREE.Vector3(
-        isNarrow ? hLook[0] * 0.75 : hLook[0],
-        hLook[1] + yOffset,
-        hLook[2]
+        hLook[0] * macroScale,
+        (hLook[1] + yOffset) * macroScale,
+        hLook[2] * macroScale
       )
 
       currentPos.current.lerp(targetPos, Math.min(delta * 4.5, 1.0))
@@ -82,7 +82,7 @@ const CameraScrollRig = ({
       currentPos.current.copy(camera.position)
       const controls = (state as any).controls
       if (controls && controls.target) {
-        controls.target.set(0, 0, 0)
+        controls.target.set(0, heroLookY, 0)
       }
     }
 
@@ -95,20 +95,20 @@ const CameraScrollRig = ({
     const p = smoothedProgress.current
 
     // On desktop, shift right (1.35) so exploded model stays on left.
-    // On narrow/mobile screens, keep centered (0) so exploded parts don't clip off screen!
-    const explodeX = isNarrow ? 0 : (aspect < 1.25 ? 0.65 : 1.35)
-    const explodeY = isNarrow ? 0.22 : 0.28
-    const explodeZ = isNarrow ? heroZ * 1.08 : 4.0
+    // On mobile screens, keep centered (0) and pull back to 5.5 so all 4 exploded sub-assemblies stay framed!
+    const explodeX = isMobile ? 0 : (isNarrow ? 0.65 : 1.35)
+    const explodeY = isMobile ? 0.14 : 0.28
+    const explodeZ = isMobile ? 5.5 : (isNarrow ? 4.9 : 4.0)
 
-    const lookExplodeX = isNarrow ? 0 : (aspect < 1.25 ? 0.55 : 1.15)
-    const lookExplodeY = isNarrow ? 0.04 : -0.05
+    const lookExplodeX = isMobile ? 0 : (isNarrow ? 0.55 : 1.15)
+    const lookExplodeY = isMobile ? 0.06 : -0.05
 
-    const targetX = THREE.MathUtils.lerp(0, explodeX, p)
+    const targetX = THREE.MathUtils.lerp(heroX, explodeX, p)
     const targetY = THREE.MathUtils.lerp(heroY, explodeY, p)
     const targetZ = THREE.MathUtils.lerp(heroZ, explodeZ, p)
 
     const lookX = THREE.MathUtils.lerp(0, lookExplodeX, p)
-    const lookY = THREE.MathUtils.lerp(0, lookExplodeY, p)
+    const lookY = THREE.MathUtils.lerp(heroLookY, lookExplodeY, p)
 
     currentPos.current.set(targetX, targetY, targetZ)
     currentLookAt.current.set(lookX, lookY, 0)
@@ -118,8 +118,8 @@ const CameraScrollRig = ({
       camera.lookAt(currentLookAt.current)
     } else if (p <= 0.02 && smoothedProgress.current > 0.001) {
       // Re-docking into Hero rest anchor
-      camera.position.lerp(new THREE.Vector3(0, heroY, heroZ), Math.min(delta * 4.5, 1.0))
-      camera.lookAt(0, 0, 0)
+      camera.position.lerp(new THREE.Vector3(heroX, heroY, heroZ), Math.min(delta * 4.5, 1.0))
+      camera.lookAt(0, heroLookY, 0)
     }
   })
 
@@ -305,6 +305,10 @@ export const Scene = ({
       ? `radial-gradient(ellipse 26% 22% at 50% 50%, ${activeColorway.hex}30 0%, rgba(0,0,0,0.96) 45%, #000000 100%)`
       : `radial-gradient(ellipse 55% 45% at 50% 50%, rgba(255,255,255,0.06) 0%, ${activeColorway.hex}14 38%, rgba(6,8,12,0.85) 65%, #040507 100%)`
 
+  const isTouchDevice =
+    typeof window !== 'undefined' &&
+    ('ontouchstart' in window || navigator.maxTouchPoints > 0 || window.innerWidth < 768)
+
   return (
     <div className="fixed inset-0 w-full h-full bg-[#030406] overflow-hidden pointer-events-none">
       {/* Dynamic atmospheric radial backdrop */}
@@ -319,17 +323,19 @@ export const Scene = ({
         style={{ opacity: audioMode === 'spatial' ? 0.75 : 0 }}
       >
         <div
-          className="absolute w-[320px] sm:w-[420px] h-[320px] sm:h-[420px] rounded-full border border-white/20 animate-[ping_4s_cubic-bezier(0,0,0.2,1)_infinite]"
+          className="absolute w-[320px] sm:w-[420px] h-[320px] sm:h-[420px] rounded-full border border-white/20 animate-[ping_4s_cubic-bezier(0,0,0.2,1)_infinite] will-change-transform"
           style={{ borderColor: `${activeColorway.hex}35` }}
         />
         <div
-          className="absolute w-[520px] sm:w-[700px] h-[520px] sm:h-[700px] rounded-full border border-white/10 animate-[ping_5.5s_cubic-bezier(0,0,0.2,1)_infinite]"
+          className="absolute w-[520px] sm:w-[700px] h-[520px] sm:h-[700px] rounded-full border border-white/10 animate-[ping_5.5s_cubic-bezier(0,0,0.2,1)_infinite] will-change-transform"
           style={{ borderColor: `${activeColorway.hex}22` }}
         />
-        <div
-          className="absolute w-[780px] sm:w-[1050px] h-[780px] sm:h-[1050px] rounded-full border border-white/5 animate-[ping_7s_cubic-bezier(0,0,0.2,1)_infinite]"
-          style={{ borderColor: `${activeColorway.hex}12` }}
-        />
+        {!isTouchDevice && (
+          <div
+            className="absolute w-[780px] sm:w-[1050px] h-[780px] sm:h-[1050px] rounded-full border border-white/5 animate-[ping_7s_cubic-bezier(0,0,0.2,1)_infinite]"
+            style={{ borderColor: `${activeColorway.hex}12` }}
+          />
+        )}
       </div>
 
       {/* STEREO Mode: Subtle Reference Studio Axis Line */}
@@ -367,11 +373,11 @@ export const Scene = ({
       <Canvas
         camera={{ position: [0, 0.15, 4.3], fov: 45 }}
         gl={{
-          antialias: true,
+          antialias: !isTouchDevice,
           alpha: true,
           powerPreference: 'high-performance',
         }}
-        dpr={[1, 2]}
+        dpr={isTouchDevice ? [1, 1.25] : [1, 2]}
         className="pointer-events-auto"
         style={{ touchAction: 'pan-y' }}
       >
@@ -382,14 +388,13 @@ export const Scene = ({
           />
           <DynamicStudioRig color={activeColorway.hex} audioMode={audioMode} />
 
-          {/* Dynamic cyber-motes reacting dramatically to active audio mode */}
-          {/* SPATIAL: 85 rich glowing sound motes | STEREO: 14 sparse dust | ANC: 0 total silence */}
+          {/* Dynamic cyber-motes: optimized particle count on mobile for smooth 60fps compositor performance */}
           {audioMode !== 'anc' && (
             <Sparkles
               key={audioMode}
-              count={audioMode === 'spatial' ? 85 : 14}
+              count={audioMode === 'spatial' ? (isTouchDevice ? 22 : 85) : (isTouchDevice ? 6 : 14)}
               scale={audioMode === 'spatial' ? 8.5 : 4.5}
-              size={audioMode === 'spatial' ? 2.6 : 1.2}
+              size={audioMode === 'spatial' ? (isTouchDevice ? 1.8 : 2.6) : 1.2}
               speed={audioMode === 'spatial' ? 0.45 : 0.12}
               opacity={audioMode === 'spatial' ? 0.65 : 0.20}
               color={activeColorway.hex}
@@ -406,35 +411,33 @@ export const Scene = ({
             onSelectHotspot={onSelectHotspot}
           />
 
-          {/* Ground Contact Shadow */}
+          {/* Ground Contact Shadow: optimized resolution and blur on mobile */}
           <ContactShadows
             position={[0, -1.82, 0]}
-            opacity={0.85}
+            opacity={isTouchDevice ? 0.65 : 0.85}
             scale={8.5}
-            blur={2.6}
+            blur={isTouchDevice ? 1.6 : 2.6}
             far={3.8}
+            resolution={isTouchDevice ? 256 : 512}
             color="#000000"
           />
 
-          {/* OrbitControls enabled only on desktop mouse devices when at Hero anchor and no hotspot is open.
-              On mobile/touch devices, disabling OrbitControls prevents pointer capture and ensures fluid native window scrolling. */}
-          <OrbitControls
-            makeDefault
-            enabled={
-              scrollProgress < 0.05 &&
-              activeHotspot === null &&
-              typeof window !== 'undefined' &&
-              !('ontouchstart' in window || navigator.maxTouchPoints > 0)
-            }
-            enableZoom={false}
-            enablePan={false}
-            enableDamping
-            dampingFactor={0.05}
-            minDistance={2.4}
-            maxDistance={7.0}
-            maxPolarAngle={Math.PI / 1.72}
-            minPolarAngle={Math.PI / 3.4}
-          />
+          {/* OrbitControls mounted strictly on desktop mouse devices.
+              On mobile/touch devices, NOT rendering OrbitControls guarantees zero pointer listeners are attached to the canvas, ensuring 100% native, unhindered page scrolling. */}
+          {!isTouchDevice && (
+            <OrbitControls
+              makeDefault
+              enabled={scrollProgress < 0.05 && activeHotspot === null}
+              enableZoom={false}
+              enablePan={false}
+              enableDamping
+              dampingFactor={0.05}
+              minDistance={2.4}
+              maxDistance={7.0}
+              maxPolarAngle={Math.PI / 1.72}
+              minPolarAngle={Math.PI / 3.4}
+            />
+          )}
         </Suspense>
       </Canvas>
     </div>

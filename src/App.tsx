@@ -17,23 +17,30 @@ export function App() {
   const [inFeaturesSection, setInFeaturesSection] = useState<boolean>(false)
   const [activeHotspot, setActiveHotspot] = useState<HotspotConfig | null>(null)
 
-  // Native window scroll listener calculating deconstruction runway & features transition
+  // Native window scroll listener calculating deconstruction runway & features transition (RAF throttled for smooth 60/120fps scrolling)
   useEffect(() => {
+    let rafId: number | null = null
+
     const handleScroll = () => {
-      const scrollY = window.scrollY || document.documentElement.scrollTop
-      const runwayHeight = window.innerHeight * 1.4
+      if (rafId !== null) return
 
-      // Clamp deconstruction progress between 0.0 (hero) and 1.0 (fully exploded)
-      const progress = Math.min(1, Math.max(0, scrollY / runwayHeight))
-      setScrollProgress(progress)
+      rafId = window.requestAnimationFrame(() => {
+        const scrollY = window.scrollY || document.documentElement.scrollTop
+        const runwayHeight = window.innerHeight * 1.4
 
-      // Detect if user has scrolled past 3D Hero runway into documentation sections
-      setInFeaturesSection(scrollY > runwayHeight * 0.75)
+        // Clamp deconstruction progress between 0.0 (hero) and 1.0 (fully exploded)
+        const progress = Math.min(1, Math.max(0, scrollY / runwayHeight))
+        setScrollProgress(progress)
 
-      // Dismiss hotspot focus if user begins scrolling
-      if (scrollY > 40) {
-        setActiveHotspot(null)
-      }
+        // Detect if user has scrolled past 3D Hero runway into documentation sections
+        setInFeaturesSection(scrollY > runwayHeight * 0.75)
+
+        // Dismiss hotspot focus if user begins scrolling
+        if (scrollY > 40) {
+          setActiveHotspot(null)
+        }
+        rafId = null
+      })
     }
 
     window.addEventListener('scroll', handleScroll, { passive: true })
@@ -41,6 +48,7 @@ export function App() {
     handleScroll()
 
     return () => {
+      if (rafId !== null) window.cancelAnimationFrame(rafId)
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', handleScroll)
     }

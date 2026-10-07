@@ -1,5 +1,5 @@
 import { useRef, useMemo } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 
@@ -338,8 +338,17 @@ export const HeadsetMesh = ({
   // Label opacity fades in as disassembly reaches inspection threshold
   const labelOpacity = Math.max(0, Math.min(1, (scrollProgress - 0.35) / 0.35))
 
+  const { size } = useThree()
+  const aspect = size.width / Math.max(size.height, 1)
+  const isMobile = aspect < 0.85 || size.width < 768
+  // Proportional mesh scale on mobile: keeps the headset perfectly proportioned, centered, and never clipped
+  const meshScale = isMobile
+    ? Math.min(Math.max(aspect * 1.32, 0.56), 0.70)
+    : 1.0
+  const mobileYOffset = isMobile ? 0.06 : 0
+
   return (
-    <group ref={rootGroupRef} position={[0, 0, 0]}>
+    <group ref={rootGroupRef} position={[0, mobileYOffset, 0]} scale={meshScale}>
       {/* Interactive 3D Hotspot Pins (Tracking synchronously with headset turntable poise) */}
       {onSelectHotspot && (
         <HotspotMarkers
